@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OÖTTV Tischtennis Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏓</text></svg>">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --bg2: #1a1d27; --bg3: #22263a;
+      --border: #2e3248; --text: #e2e8f0; --muted: #6b7280;
+      --accent: #378ADD; --green: #4ade80; --red: #f87171;
+      --radius: 10px;
+      --sidebar-w: 280px;
+    }
+    body { background: var(--bg); color: var(--text);
+           font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;
+           display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* ── Header ── */
+    header {
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      padding: 12px 18px; display: flex; align-items: center;
+      gap: 14px; flex-shrink: 0; z-index: 10;
+    }
+    header h1 { font-size: 16px; font-weight: 600; white-space: nowrap; }
+    header h1 span { color: var(--accent); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%;
+                  background: var(--muted); display: inline-block; }
+    .status-dot.ok { background: var(--green); }
+    .status-dot.loading { background: #facc15; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .status-txt { font-size: 12px; color: var(--muted); }
+
+    /* ── Layout ── */
+    .layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w); background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      flex-shrink: 0; overflow: hidden;
+    }
+    .sidebar-header { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .sidebar-search {
+      width: 100%; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 10px; color: var(--text);
+      font-size: 13px; outline: none;
+    }
+    .sidebar-search:focus { border-color: var(--accent); }
+    .sidebar-search::placeholder { color: var(--muted); }
+    .sidebar-body { flex: 1; overflow-y: auto; }
+    .sidebar-body::-webkit-scrollbar { width: 5px; }
+    .sidebar-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .gruppe-header {
+      padding: 8px 12px 4px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+      position: sticky; top: 0; background: var(--bg2); z-index: 1;
+    }
+    .liga-item {
+      padding: 8px 14px; cursor: pointer; font-size: 13px;
+      border-left: 3px solid transparent;
+      display: flex; align-items: center; justify-content: space-between;
+      transition: background 0.1s;
+    }
+    .liga-item:hover { background: var(--bg3); }
+    .liga-item.active {
+      background: rgba(55,138,221,0.12);
+      border-left-color: var(--accent);
+      color: var(--accent);
+    }
+    .liga-item .teams-badge {
+      font-size: 11px; color: var(--muted); background: var(--bg3);
+      border-radius: 10px; padding: 1px 7px;
+    }
+    .liga-item.active .teams-badge { background: rgba(55,138,221,0.2); color: var(--accent); }
+
+    .sidebar-loading {
+      padding: 20px; text-align: center; color: var(--muted); font-size: 13px;
+    }
+    .spinner {
+      width: 20px; height: 20px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite; display: inline-block; margin-bottom: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Hauptbereich ── */
+    .main {
+      flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .main::-webkit-scrollbar { width: 6px; }
+    .main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .welcome {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted); text-align: center; padding: 40px;
+    }
+    .welcome-icon { font-size: 56px; }
+    .welcome h2 { font-size: 20px; color: var(--text); }
+    .welcome p { font-size: 14px; max-width: 340px; line-height: 1.6; }
+
+    .liga-dashboard { padding: 20px; }
+    .liga-title-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px; gap: 12px; flex-wrap: wrap;
+    }
+    .liga-title { font-size: 18px; font-weight: 600; }
+    .liga-meta { font-size: 12px; color: var(--muted); }
+    .btn {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .btn:hover { color: var(--text); border-color: var(--accent); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── Tabs ── */
+    .tab-bar {
+      display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+      margin-bottom: 18px; overflow-x: auto;
+    }
+    .tab {
+      padding: 8px 16px; border-radius: var(--radius) var(--radius) 0 0;
+      cursor: pointer; color: var(--muted); border: 1px solid transparent;
+      border-bottom: none; font-size: 13px; white-space: nowrap;
+      transition: all 0.15s; user-select: none;
+    }
+    .tab:hover { color: var(--text); background: var(--bg3); }
+    .tab.active { color: var(--text); background: var(--bg2); border-color: var(--border); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px;
+    }
+
+    /* ── Tabellen ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left; padding: 7px 10px; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 8px 10px; border-bottom: 1px solid #1e2133; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg3); }
+    .center { text-align: center; }
+    .bold { font-weight: 600; }
+    .muted { color: var(--muted); }
+    .green { color: var(--green); }
+    .red { color: var(--red); }
+
+    /* Spielersuche */
+    .search-row {
+      display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .inline-search {
+      flex: 1; min-width: 160px; background: var(--bg3);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 7px 10px; color: var(--text); font-size: 13px; outline: none;
+    }
+    .inline-search:focus { border-color: var(--accent); }
+    .inline-search::placeholder { color: var(--muted); }
+
+    /* Win-Bar */
+    .win-bar-wrap {
+      position: relative; height: 14px; background: var(--bg3);
+      border-radius: 99px; min-width: 60px; overflow: hidden;
+    }
+    .win-bar-fill {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      border-radius: 99px; opacity: 0.7;
+    }
+    .win-bar-label {
+      position: absolute; right: 4px; top: 50%;
+      transform: translateY(-50%); font-size: 10px; font-weight: 600;
+    }
+
+    /* Rang-Badge */
+    .rang-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 50%; font-weight: 700;
+      font-size: 12px;
+    }
+    .rang-1 { background: #fbbf24; color: #1a1200; }
+    .rang-2 { background: #94a3b8; color: #0f1117; }
+    .rang-3 { background: #cd7c43; color: #1a0a00; }
+
+    /* Spiele */
+    .spiel-row { display: grid; grid-template-columns: 110px 1fr 1fr 80px; gap: 8px;
+                 align-items: center; padding: 8px 0; border-bottom: 1px solid #1e2133; }
+    .spiel-row:last-child { border-bottom: none; }
+    .spiel-datum { font-size: 11px; color: var(--muted); }
+    .spiel-teams { font-size: 13px; }
+    .spiel-ergebnis { font-size: 13px; font-weight: 600; text-align: right; }
+    .ergebnis-offen { color: var(--muted); font-style: italic; font-weight: 400; }
+
+    /* Lade-Overlay */
+    .dashboard-loading {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 60px; gap: 12px; color: var(--muted);
+    }
+
+    /* Fehler */
+    .error-box {
+      background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3);
+      border-radius: var(--radius); padding: 14px; margin-bottom: 14px;
+      color: var(--red); font-size: 13px;
+    }
+
+    /* Stats-Grid */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 10px; margin-bottom: 14px;
+    }
+    .stat-box { background: var(--bg3); border-radius: var(--radius); padding: 12px; }
+    .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+    .stat-value { font-size: 20px; font-weight: 600; }
+
+    /* Chart */
+    .chart-wrap { position: relative; height: 280px; }
+
+    /* Mobile */
+    @media (max-width: 640px) {
+      .sidebar { width: 100%; height: auto; max-height: 220px; }
+      .layout { flex-direction: column; }
+      .main { overflow-y: auto; }
+      .spiel-row { grid-template-columns: 90px 1fr 70px; }
+      .spiel-row .spiel-teams { grid-column: 1 / -1; grid-row: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div>🏓</div>
+  <h1>OÖTTV <span>Tischtennis</span> Dashboard</h1>
+  <div class="header-right">
+    <span class="status-dot" id="statusDot"></span>
+    <span class="status-txt" id="statusTxt">Lade Ligen...</span>
+  </div>
+</header>
+
+<!-- ── Layout ── -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <input class="sidebar-search" type="text" id="ligaSearch"
+             placeholder="Liga suchen..." oninput="filterLigen()">
+    </div>
+    <div class="sidebar-body" id="sidebarBody">
+      <div class="sidebar-loading">
+        <div><div class="spinner"></div></div>
+        <div>Ligen werden geladen…</div>
+        <div style="font-size:11px;margin-top:4px;">Das kann 30–60 Sekunden dauern.</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Hauptbereich -->
+  <main class="main" id="main">
+    <div class="welcome" id="welcome">
+      <div class="welcome-icon">🏓</div>
+      <h2>Liga auswählen</h2>
+      <p>Wähle links eine Liga aus, um Tabelle, Spieler und Spielplan anzuzeigen.</p>
+    </div>
+    <div id="dashboard" style="display:none;"></div>
+  </main>
+
+</div>
+
+<script>
+// ────────────────────────────────────────────────────────────────
+// Daten
+// ────────────────────────────────────────────────────────────────
+let alleligen = {{ ligen_json | safe }};
+let aktiveId  = null;
+let laufenderChart = null;
+
+// ────────────────────────────────────────────────────────────────
+// Init
+// ────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  if (alleligen.length > 0) {
+    renderSidebar(alleligen);
+    setStatus("ok", `${alleligen.length} Ligen geladen`);
+  } else {
+    // Noch nicht geladen – pollen
+    setStatus("loading", "Ligen werden geladen…");
+    polleLigen();
+  }
+});
+
+function polleLigen() {
+  fetch("/api/ligen")
+    .then(r => r.json())
+    .then(ligen => {
+      if (ligen.length > 0) {
+        alleligen = ligen;
+        renderSidebar(ligen);
+        setStatus("ok", `${ligen.length} Ligen geladen`);
+      } else {
+        setTimeout(polleLigen, 3000);
+      }
+    })
+    .catch(() => setTimeout(polleLigen, 5000));
+}
+
+// ────────────────────────────────────────────────────────────────
+// Sidebar
+// ────────────────────────────────────────────────────────────────
+function renderSidebar(ligen) {
+  const body = document.getElementById("sidebarBody");
+  if (!ligen.length) {
+    body.innerHTML = '<div class="sidebar-loading">Keine Ligen gefunden.</div>';
+    return;
+  }
+
+  // Nach Gruppe sortieren
+  const gruppen = {};
+  for (const l of ligen) {
+    const g = l.gruppe || "Sonstige";
+    if (!gruppen[g]) gruppen[g] = [];
+    gruppen[g].push(l);
+  }
+
+  let html = "";
+  for (const [gruppe, items] of Object.entries(gruppen).sort()) {
+    html += `<div class="gruppe-header">${esc(gruppe)}</div>`;
+    for (const l of items) {
+      const badge = l.teams ? `<span class="teams-badge">${l.teams}</span>` : "";
+      html += `<div class="liga-item" id="li-${l.id}"
+                    onclick="ladeLiga(${l.id}, this)"
+                    data-name="${esc(l.name.toLowerCase())}">
+                 <span>${esc(l.name)}</span>${badge}
+               </div>`;
+    }
+  }
+  body.innerHTML = html;
+}
+
+function filterLigen() {
+  const q = document.getElementById("ligaSearch").value.toLowerCase().trim();
+  document.querySelectorAll(".liga-item").forEach(el => {
+    const match = !q || el.dataset.name.includes(q);
+    el.style.display = match ? "" : "none";
+  });
+  document.querySelectorAll(".gruppe-header").forEach(gh => {
+    // Gruppe ausblenden wenn alle Items in ihr versteckt sind
+    let sibling = gh.nextElementSibling;
+    let hat_sichtbare = false;
+    while (sibling && !sibling.classList.contains("gruppe-header")) {
+      if (sibling.style.display !== "none") hat_sichtbare = true;
+      sibling = sibling.nextElementSibling;
+    }
+    gh.style.display = hat_sichtbare ? "" : "none";
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Liga laden
+// ────────────────────────────────────────────────────────────────
+function ladeLiga(id, el) {
+  if (aktiveId === id) return;
+  aktiveId = id;
+
+  // Sidebar-Highlight
+  document.querySelectorAll(".liga-item").forEach(e => e.classList.remove("active"));
+  el.classList.add("active");
+
+  // Dashboard zeigen mit Ladeanzeige
+  document.getElementById("welcome").style.display = "none";
+  const dash = document.getElementById("dashboard");
+  dash.style.display = "block";
+  dash.innerHTML = `
+    <div class="dashboard-loading">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;"></div>
+      <div>Lade Daten…</div>
+    </div>`;
+
+  fetch(`/api/liga/${id}`)
+    .then(r => r.json())
+    .then(daten => {
+      if (aktiveId !== id) return; // anderweitig weitergenavigiert
+      renderDashboard(daten);
+    })
+    .catch(err => {
+      if (aktiveId !== id) return;
+      dash.innerHTML = `<div class="liga-dashboard">
+        <div class="error-box">Fehler beim Laden: ${err}</div></div>`;
+    });
+}
+
+function refreshLiga() {
+  if (!aktiveId) return;
+  const el = document.getElementById(`li-${aktiveId}`);
+  aktiveId = null; // Reset damit ladeLiga nicht frühzeitig abbricht
+  const id = parseInt(el?.id?.replace("li-", "") || "0");
+  if (!id) return;
+  fetch(`/api/liga/${id}?refresh=1`)
+    .then(r => r.json())
+    .then(daten => renderDashboard(daten))
+    .catch(() => {});
+  aktiveId = id;
+  // Ladeanzeige
+  const dash = document.getElementById("dashboard");
+  dash.innerHTML = `<div class="dashboard-loading">
+    <div class="spinner" style="width:32px;height:32px;border-width:3px;"></div>
+    <div>Aktualisiere…</div></div>`;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Dashboard rendern
+// ────────────────────────────────────────────────────────────────
+function renderDashboard(d) {
+  const dash = document.getElementById("dashboard");
+  const jetzt = Date.now() / 1000;
+
+  const vergangene = d.vergangene || [];
+  const kuenftige  = d.kuenftige  || [];
+  const tabelle    = d.tabelle    || [];
+  const rangliste  = d.rangliste  || [];
+
+  // Nächstes Spiel
+  const naechstes = kuenftige[0] || null;
+
+  // Kennzahlen
+  const spiele_gesamt = vergangene.length + kuenftige.length;
+
+  let html = `
+  <div class="liga-dashboard">
+    <div class="liga-title-bar">
+      <div>
+        <div class="liga-title">${esc(d.liga_name)}</div>
+        <div class="liga-meta">Zuletzt aktualisiert: ${d.zuletzt || '–'}</div>
+      </div>
+      <button class="btn" onclick="refreshLiga()">↻ Aktualisieren</button>
+    </div>
+    ${d.fehler ? `<div class="error-box">⚠ ${esc(d.fehler)}</div>` : ''}
+
+    <!-- Kennzahlen -->
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Teams</div>
+        <div class="stat-value">${tabelle.length}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Spieler</div>
+        <div class="stat-value">${rangliste.filter(s => !s.nicht_gewertet).length}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Spiele gesamt</div>
+        <div class="stat-value">${spiele_gesamt}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Ausstehend</div>
+        <div class="stat-value">${kuenftige.length}</div>
+      </div>
+    </div>
+
+    ${naechstes ? `
+    <div class="card" style="border-color: rgba(55,138,221,0.4);">
+      <div class="card-title">Nächstes Spiel</div>
+      <div style="font-size:15px;font-weight:600;">${esc(naechstes.heim)} – ${esc(naechstes.gast)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;">${esc(naechstes.datum)} um ${esc(naechstes.zeit)} Uhr</div>
+    </div>` : ''}
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchTab('tabelle', this)">Tabelle</div>
+      <div class="tab" onclick="switchTab('spieler', this)">Spieler</div>
+      <div class="tab" onclick="switchTab('spiele', this)">Spiele</div>
+      <div class="tab" onclick="switchTab('charts', this)">Charts</div>
+    </div>
+
+    <!-- Tab: Tabelle -->
+    <div class="tab-content active" id="tab-tabelle">
+      ${renderTabelle(tabelle)}
+    </div>
+
+    <!-- Tab: Spieler -->
+    <div class="tab-content" id="tab-spieler">
+      <div class="search-row">
+        <input class="inline-search" type="text" id="spielerSearch"
+               placeholder="Spieler suchen…" oninput="filterSpieler()">
+        <input class="inline-search" type="text" id="vereinSearch"
+               placeholder="Verein/Kürzel…" oninput="filterSpieler()">
+      </div>
+      ${renderRangliste(rangliste)}
+    </div>
+
+    <!-- Tab: Spiele -->
+    <div class="tab-content" id="tab-spiele">
+      ${renderSpiele(vergangene, kuenftige)}
+    </div>
+
+    <!-- Tab: Charts -->
+    <div class="tab-content" id="tab-charts">
+      ${renderCharts(tabelle, rangliste)}
+    </div>
+  </div>`;
+
+  if (laufenderChart) {
+    laufenderChart.destroy();
+    laufenderChart = null;
+  }
+  dash.innerHTML = html;
+
+  // Charts initialisieren (nach DOM-Insert)
+  initCharts(tabelle, rangliste);
+}
+
+// ── Tabelle ──
+function renderTabelle(tabelle) {
+  if (!tabelle.length) return '<div class="muted" style="padding:20px;">Keine Daten verfügbar.</div>';
+  const rows = tabelle.map(t => {
+    const rangBadge = t.rang <= 3
+      ? `<span class="rang-badge rang-${t.rang}">${t.rang}</span>`
+      : `<span style="color:var(--muted);padding:0 5px;">${t.rang}</span>`;
+    return `<tr>
+      <td class="center">${rangBadge}</td>
+      <td class="bold">${esc(t.name)}</td>
+      <td class="muted" style="font-size:12px;">${esc(t.kürzel)}</td>
+      <td class="center">${t.sp}</td>
+      <td class="center green">${t.s}</td>
+      <td class="center muted">${t.u}</td>
+      <td class="center red">${t.n}</td>
+      <td class="center bold">${t.p}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th class="center">#</th>
+          <th>Mannschaft</th>
+          <th>Kürzel</th>
+          <th class="center">Sp</th>
+          <th class="center">S</th>
+          <th class="center">U</th>
+          <th class="center">N</th>
+          <th class="center">Pkt</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ── Rangliste ──
+function renderRangliste(rangliste) {
+  if (!rangliste.length) return '<div class="muted" style="padding:20px;">Keine Spieler gefunden.</div>';
+  const gewertet     = rangliste.filter(s => !s.nicht_gewertet);
+  const nicht_gew    = rangliste.filter(s => s.nicht_gewertet);
+
+  function spielerRows(liste) {
+    return liste.map(s => {
+      const wp = s.win_pct || 0;
+      const barColor = wp >= 60 ? "var(--green)" : wp >= 40 ? "#facc15" : "var(--red)";
+      const rcBadge = s.rc
+        ? `<span style="background:var(--bg3);border-radius:6px;padding:1px 7px;font-size:11px;">${s.rc}</span>`
+        : '<span class="muted">–</span>';
+      const rangAnz = s.nicht_gewertet
+        ? '<span class="muted">n.g.</span>'
+        : `<span style="color:var(--muted);">${s.rang}</span>`;
+      return `<tr class="spieler-row" data-name="${esc(s.name.toLowerCase())}" data-verein="${esc((s.verein||'').toLowerCase())}">
+        <td class="center">${rangAnz}</td>
+        <td class="bold">${esc(s.name)}</td>
+        <td class="muted" style="font-size:12px;">${esc(s.verein)}</td>
+        <td class="center">${s.einsaetze}</td>
+        <td class="center">${s.siege}<span class="muted">:</span>${s.niederl}</td>
+        <td>
+          <div class="win-bar-wrap">
+            <div class="win-bar-fill" style="width:${wp}%;background:${barColor};"></div>
+            <div class="win-bar-label" style="color:${barColor};">${wp}%</div>
+          </div>
+        </td>
+        <td class="center">${rcBadge}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  let html = `<div class="card">
+    <div class="table-wrap">
+      <table id="spielerTabelle">
+        <thead><tr>
+          <th class="center">#</th>
+          <th>Name</th>
+          <th>Verein</th>
+          <th class="center">Eins.</th>
+          <th class="center">S:N</th>
+          <th style="min-width:90px;">Winrate</th>
+          <th class="center">RC</th>
+        </tr></thead>
+        <tbody>${spielerRows(gewertet)}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  if (nicht_gew.length) {
+    html += `<div class="card">
+      <div class="card-title">Nicht gewertet (${nicht_gew.length})</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th class="center">#</th><th>Name</th><th>Verein</th>
+            <th class="center">Eins.</th><th class="center">S:N</th>
+            <th style="min-width:90px;">Winrate</th><th class="center">RC</th>
+          </tr></thead>
+          <tbody>${spielerRows(nicht_gew)}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+  return html;
+}
+
+function filterSpieler() {
+  const nameQ   = document.getElementById("spielerSearch")?.value.toLowerCase().trim() || "";
+  const vereinQ = document.getElementById("vereinSearch")?.value.toLowerCase().trim() || "";
+  document.querySelectorAll(".spieler-row").forEach(row => {
+    const nameMatch   = !nameQ   || row.dataset.name.includes(nameQ);
+    const vereinMatch = !vereinQ || row.dataset.verein.includes(vereinQ);
+    row.style.display = nameMatch && vereinMatch ? "" : "none";
+  });
+}
+
+// ── Spiele ──
+function renderSpiele(vergangene, kuenftige) {
+  function spieleSection(title, spiele, istVergangen) {
+    if (!spiele.length) return '';
+    const rows = spiele.map(s => {
+      const erg = s.ergebnis
+        ? `<span>${esc(s.ergebnis)}</span>`
+        : `<span class="ergebnis-offen">–</span>`;
+      return `<div class="spiel-row">
+        <div class="spiel-datum">${esc(s.datum)}<br><span style="font-size:10px;">${esc(s.zeit)}</span></div>
+        <div class="spiel-teams bold">${esc(s.heim)}</div>
+        <div class="spiel-teams muted">– ${esc(s.gast)}</div>
+        <div class="spiel-ergebnis">${erg}</div>
+      </div>`;
+    });
+    return `<div class="card">
+      <div class="card-title">${title} (${spiele.length})</div>
+      ${rows.join("")}
+    </div>`;
+  }
+
+  let html = spieleSection("Kommende Spiele", kuenftige, false);
+  // Vergangene: neueste zuerst
+  html += spieleSection("Vergangene Spiele", [...vergangene].reverse(), true);
+  if (!html) return '<div class="muted" style="padding:20px;">Keine Spieltermine gefunden.</div>';
+  return html;
+}
+
+// ── Charts ──
+function renderCharts(tabelle, rangliste) {
+  if (!tabelle.length && !rangliste.length) {
+    return '<div class="muted" style="padding:20px;">Keine Chart-Daten verfügbar.</div>';
+  }
+  return `
+    <div class="card">
+      <div class="card-title">Punkte der Teams</div>
+      <div class="chart-wrap"><canvas id="chartTabelle"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Top 15 Spieler – Siege/Niederlagen</div>
+      <div class="chart-wrap"><canvas id="chartSpieler"></canvas></div>
+    </div>`;
+}
+
+function initCharts(tabelle, rangliste) {
+  // Chart 1: Team-Punkte
+  const ct = document.getElementById("chartTabelle");
+  if (ct && tabelle.length) {
+    new Chart(ct, {
+      type: "bar",
+      data: {
+        labels: tabelle.map(t => t.kürzel || t.name.slice(0, 10)),
+        datasets: [{
+          label: "Punkte",
+          data: tabelle.map(t => t.p),
+          backgroundColor: "rgba(55,138,221,0.7)",
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#6b7280" }, grid: { color: "#2e3248" } },
+          y: { ticks: { color: "#6b7280" }, grid: { color: "#2e3248" } }
+        }
+      }
+    });
+  }
+
+  // Chart 2: Spieler Siege/Niederlagen (Top 15)
+  const cs = document.getElementById("chartSpieler");
+  if (cs && rangliste.length) {
+    const top = rangliste.filter(s => !s.nicht_gewertet).slice(0, 15);
+    new Chart(cs, {
+      type: "bar",
+      data: {
+        labels: top.map(s => s.name.split(" ")[0]),
+        datasets: [
+          {
+            label: "Siege",
+            data: top.map(s => s.siege),
+            backgroundColor: "rgba(74,222,128,0.7)",
+            borderRadius: 3,
+          },
+          {
+            label: "Niederlagen",
+            data: top.map(s => s.niederl),
+            backgroundColor: "rgba(248,113,113,0.7)",
+            borderRadius: 3,
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: "#e2e8f0", font: { size: 12 } } }
+        },
+        scales: {
+          x: { ticks: { color: "#6b7280" }, grid: { color: "#2e3248" } },
+          y: { ticks: { color: "#6b7280" }, grid: { color: "#2e3248" } }
+        }
+      }
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Tabs
+// ────────────────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+  const tc = document.getElementById(`tab-${name}`);
+  if (tc) tc.classList.add("active");
+}
+
+// ────────────────────────────────────────────────────────────────
+// Hilfsfunktionen
+// ────────────────────────────────────────────────────────────────
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function setStatus(type, text) {
+  const dot = document.getElementById("statusDot");
+  const txt = document.getElementById("statusTxt");
+  dot.className = "status-dot " + type;
+  txt.textContent = text;
+}
+</script>
+
+</body>
+</html>
