@@ -236,13 +236,89 @@
     /* Chart */
     .chart-wrap { position: relative; height: 280px; }
 
-    /* Mobile */
-    @media (max-width: 640px) {
-      .sidebar { width: 100%; height: auto; max-height: 220px; }
-      .layout { flex-direction: column; }
-      .main { overflow-y: auto; }
-      .spiel-row { grid-template-columns: 90px 1fr 70px; }
-      .spiel-row .spiel-teams { grid-column: 1 / -1; grid-row: 1; }
+    /* ── Hamburger-Button (nur Mobile) ── */
+    .menu-btn {
+      display: none; background: none; border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 5px 9px;
+      font-size: 16px; cursor: pointer; line-height: 1; flex-shrink: 0;
+    }
+
+    /* ── Overlay-Hintergrund ── */
+    .sidebar-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 99;
+    }
+    .sidebar-overlay.open { display: block; }
+
+    /* ── Mobile ── */
+    @media (max-width: 700px) {
+      /* Header kompakter */
+      header { padding: 10px 12px; }
+      header h1 { font-size: 14px; }
+      .status-txt { display: none; }
+      .menu-btn { display: block; }
+
+      /* Body darf scrollen */
+      body { height: auto; overflow: auto; }
+      .layout { flex-direction: column; height: auto; overflow: visible; }
+
+      /* Sidebar als Overlay-Drawer */
+      .sidebar {
+        position: fixed; top: 0; left: -100%; width: 82%; max-width: 300px;
+        height: 100%; z-index: 100;
+        transition: left 0.25s ease; border-right: 1px solid var(--border);
+      }
+      .sidebar.open { left: 0; }
+      .sidebar-header { padding: 10px; display: flex; gap: 8px; align-items: center; }
+      .sidebar-search { flex: 1; }
+      .sidebar-close {
+        background: none; border: none; color: var(--muted);
+        font-size: 20px; cursor: pointer; padding: 0 4px;
+      }
+
+      /* Main nimmt vollen Platz */
+      .main { overflow-y: visible; }
+      .liga-dashboard { padding: 12px; }
+
+      /* Stats kleiner */
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-value { font-size: 16px; }
+
+      /* Tabelle: unwichtige Spalten verstecken */
+      table th:nth-child(3), table td:nth-child(3),  /* Kürzel */
+      table th:nth-child(6), table td:nth-child(6)   /* U */
+      { display: none; }
+
+      /* Spieler-Tabelle: Einsätze + Winrate-Spalte verstecken */
+      #spielerTabelle th:nth-child(4), #spielerTabelle td:nth-child(4),
+      #spielerTabelle th:nth-child(6), #spielerTabelle td:nth-child(6)
+      { display: none; }
+
+      /* Spiele-Zeilen: Stack-Layout */
+      .spiel-row {
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        gap: 2px 8px;
+      }
+      .spiel-row .spiel-datum { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+      .spiel-row .spiel-teams:nth-child(2) { grid-column: 1; grid-row: 2; }
+      .spiel-row .spiel-teams:nth-child(3) { grid-column: 1; grid-row: 3; }
+      .spiel-row .spiel-ergebnis { grid-column: 2; grid-row: 2 / 4; align-self: center; }
+
+      /* Tabs scrollen horizontal */
+      .tab-bar { gap: 2px; }
+      .tab { padding: 7px 11px; font-size: 12px; }
+
+      /* Charts kleiner */
+      .chart-wrap { height: 200px; }
+
+      /* Liga-Titelzeile */
+      .liga-title { font-size: 15px; }
+      .liga-title-bar { margin-bottom: 12px; }
+
+      /* Suche volle Breite */
+      .search-row { flex-direction: column; }
+      .inline-search { min-width: unset; width: 100%; }
     }
   </style>
 </head>
@@ -250,6 +326,7 @@
 
 <!-- ── Header ── -->
 <header>
+  <button class="menu-btn" onclick="toggleSidebar()" aria-label="Ligen-Menü">☰</button>
   <div>🏓</div>
   <h1>OÖTTV <span>Tischtennis</span> Dashboard</h1>
   <div class="header-right">
@@ -258,14 +335,18 @@
   </div>
 </header>
 
+<!-- Overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
 <!-- ── Layout ── -->
 <div class="layout">
 
   <!-- Sidebar -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <input class="sidebar-search" type="text" id="ligaSearch"
              placeholder="Liga suchen..." oninput="filterLigen()">
+      <button class="sidebar-close" onclick="toggleSidebar()" aria-label="Schließen">✕</button>
     </div>
     <div class="sidebar-body" id="sidebarBody">
       <div class="sidebar-loading">
@@ -401,6 +482,9 @@ function ladeLiga(id, el) {
   // Sidebar-Highlight
   document.querySelectorAll(".liga-item").forEach(e => e.classList.remove("active"));
   el.classList.add("active");
+
+  // Auf Mobile Sidebar schließen
+  if (window.innerWidth <= 700) toggleSidebar();
 
   // Dashboard zeigen mit Ladeanzeige
   document.getElementById("welcome").style.display = "none";
@@ -842,6 +926,14 @@ function esc(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function toggleSidebar() {
+  const sidebar  = document.getElementById("sidebar");
+  const overlay  = document.getElementById("sidebarOverlay");
+  const isOpen   = sidebar.classList.contains("open");
+  sidebar.classList.toggle("open", !isOpen);
+  overlay.classList.toggle("open", !isOpen);
 }
 
 function setStatus(type, text) {
