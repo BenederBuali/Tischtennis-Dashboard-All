@@ -74,11 +74,31 @@
       border-left-color: var(--accent);
       color: var(--accent);
     }
-    .liga-item .teams-badge {
-      font-size: 11px; color: var(--muted); background: var(--bg3);
-      border-radius: 10px; padding: 1px 7px;
+    .expand-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 12px; padding: 2px 5px; border-radius: 4px; flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
     }
-    .liga-item.active .teams-badge { background: rgba(55,138,221,0.2); color: var(--accent); }
+    .expand-btn:hover { color: var(--text); background: var(--bg3); }
+    .liga-item.active .expand-btn { color: var(--accent); }
+
+    .mannschaften-list {
+      display: none; padding: 2px 0 4px 17px;
+      border-left: 3px solid var(--border);
+      margin: 0 0 2px 14px;
+    }
+    .mannschaft-item {
+      padding: 4px 8px; font-size: 12px; color: var(--muted);
+      cursor: pointer; border-radius: 4px; display: flex;
+      align-items: center; gap: 6px;
+      transition: background 0.1s, color 0.1s;
+    }
+    .mannschaft-item:hover { background: var(--bg3); color: var(--text); }
+    .mannschaft-item .m-kürzel {
+      font-family: monospace; font-size: 11px; color: var(--accent);
+      background: rgba(55,138,221,0.1); border-radius: 3px;
+      padding: 0 4px; flex-shrink: 0;
+    }
 
     .sidebar-loading {
       padding: 20px; text-align: center; color: var(--muted); font-size: 13px;
@@ -383,7 +403,13 @@ let laufenderChart = null;
 document.addEventListener("DOMContentLoaded", () => {
   if (alleligen.length > 0) {
     renderSidebar(alleligen);
-    setStatus("ok", `${alleligen.length} Ligen geladen`);
+    const mitTeams = alleligen.filter(l => l.mannschaften && l.mannschaften.length > 0).length;
+    if (mitTeams < alleligen.length) {
+      setStatus("loading", `${mitTeams}/${alleligen.length} Ligen mit Mannschaften`);
+      setTimeout(polleLigen, 2000);
+    } else {
+      setStatus("ok", `${alleligen.length} Ligen geladen`);
+    }
   } else {
     // Noch nicht geladen – pollen
     setStatus("loading", "Ligen werden geladen…");
@@ -395,12 +421,16 @@ function polleLigen() {
   fetch("/api/ligen")
     .then(r => r.json())
     .then(ligen => {
-      if (ligen.length > 0) {
-        alleligen = ligen;
-        renderSidebar(ligen);
-        setStatus("ok", `${ligen.length} Ligen geladen`);
+      if (ligen.length === 0) { setTimeout(polleLigen, 3000); return; }
+      alleligen = ligen;
+      renderSidebar(ligen);
+      const mitTeams = ligen.filter(l => l.mannschaften && l.mannschaften.length > 0).length;
+      if (mitTeams < ligen.length) {
+        // Noch nicht alle Mannschaften geladen – weiter pollen
+        setStatus("loading", `${mitTeams}/${ligen.length} Ligen mit Mannschaften`);
+        setTimeout(polleLigen, 2000);
       } else {
-        setTimeout(polleLigen, 3000);
+        setStatus("ok", `${ligen.length} Ligen geladen`);
       }
     })
     .catch(() => setTimeout(polleLigen, 5000));
@@ -443,15 +473,38 @@ function renderSidebar(ligen) {
     html += `<div class="gruppe-header">${esc(gruppe)} <span style="font-weight:400;opacity:.5;">(${items.length})</span></div>`;
     for (const l of items) {
       const nr = l.nummer ? `<span style="font-size:10px;color:var(--muted);font-family:monospace;">${esc(l.nummer)}</span>` : "";
+      const hat = l.mannschaften && l.mannschaften.length > 0;
+      const expandBtn = hat
+        ? `<button class="expand-btn" onclick="event.stopPropagation();toggleMannschaften(${l.id})" title="Mannschaften anzeigen">▾</button>`
+        : `<span style="width:22px;display:inline-block;"></span>`;
+      const mList = hat
+        ? `<div class="mannschaften-list" id="ml-${l.id}">
+            ${l.mannschaften.map(m => `
+              <div class="mannschaft-item" onclick="ladeLiga(${l.id}, document.getElementById('li-${l.id}'))">
+                <span class="m-kürzel">${esc(m.kürzel)}</span>
+                <span>${esc(m.name)}</span>
+              </div>`).join("")}
+           </div>`
+        : "";
       html += `<div class="liga-item" id="li-${l.id}"
                     onclick="ladeLiga(${l.id}, this)"
                     data-name="${esc(l.name.toLowerCase())}"
                     data-gruppe="${esc(gruppe.toLowerCase())}">
-                 <span>${esc(l.name)}</span>${nr}
-               </div>`;
+                 <span style="flex:1;">${esc(l.name)}</span>${nr}${expandBtn}
+               </div>${mList}`;
     }
   }
   body.innerHTML = html;
+}
+
+function toggleMannschaften(id) {
+  const list = document.getElementById("ml-" + id);
+  if (!list) return;
+  const open = list.style.display === "block";
+  list.style.display = open ? "none" : "block";
+  // Pfeil drehen
+  const btn = document.querySelector(`#li-${id} .expand-btn`);
+  if (btn) btn.textContent = open ? "▾" : "▴";
 }
 
 function filterLigen() {

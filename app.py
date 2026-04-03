@@ -415,16 +415,59 @@ def lade_liga_daten(liga_id: int, force: bool = False) -> dict:
         return fehler_daten
 
 
+# ─── Mannschaften schnell laden ─────────────────────────────────────────────────
+
+def lade_mannschaften_schnell(liga_id: int) -> list:
+    """Lädt nur die Mannschaftsnamen einer Liga (kein vollständiger Daten-Load)."""
+    try:
+        soup = fetch(BASE_URL, {"lid": liga_id})
+        teams = []
+        for row in soup.find_all("tr"):
+            zellen = row.find_all("td")
+            if len(zellen) < 15:
+                continue
+            if not zellen[1].get("data-msrangsort"):
+                continue
+            rang_text = safe_text(zellen[1]).strip().rstrip(".")
+            if not rang_text.isdigit():
+                continue
+            name   = safe_text(zellen[2]).strip()
+            kürzel = safe_text(zellen[3]).strip()
+            if name and kürzel:
+                teams.append({"name": name, "kürzel": kürzel})
+        return teams
+    except Exception:
+        return []
+
+
 # ─── Hintergrund-Thread ──────────────────────────────────────────────────────────
 
 def hintergrund_init():
-    """Lädt beim Start die Ligen-Liste."""
+    """Lädt beim Start die Ligen-Liste und danach alle Mannschaftsnamen."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     global _ligen_liste, _ligen_geladen
+
     ligen = entdecke_ligen()
     with _cache_lock:
         _ligen_liste[:] = ligen
         _ligen_geladen = True
     print(f"Ligen-Liste geladen: {len(ligen)} Einträge")
+
+    # Mannschaftsnamen aller Ligen parallel im Hintergrund vorladen
+    print("Lade Mannschaften für alle Ligen...")
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        futures = {executor.submit(lade_mannschaften_schnell, l["id"]): l["id"] for l in ligen}
+        fertig = 0
+        for future in as_completed(futures):
+            lid = futures[future]
+            mannschaften = future.result()
+            fertig += 1
+            with _cache_lock:
+                for l in _ligen_liste:
+                    if l["id"] == lid:
+                        l["mannschaften"] = mannschaften
+                        break
+    print(f"Mannschaften geladen: {fertig} Ligen")
 
 
 # ─── Flask-Routen ────────────────────────────────────────────────────────────────
