@@ -172,9 +172,11 @@
       flex: 1; min-width: 160px; background: var(--bg3);
       border: 1px solid var(--border); border-radius: 8px;
       padding: 7px 10px; color: var(--text); font-size: 13px; outline: none;
+      appearance: none; cursor: pointer;
     }
     .inline-search:focus { border-color: var(--accent); }
     .inline-search::placeholder { color: var(--muted); }
+    select.inline-search { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
 
     /* Win-Bar */
     .win-bar-wrap {
@@ -515,8 +517,7 @@ function renderDashboard(d) {
       <div class="search-row">
         <input class="inline-search" type="text" id="spielerSearch"
                placeholder="Spieler suchen…" oninput="filterSpieler()">
-        <input class="inline-search" type="text" id="vereinSearch"
-               placeholder="Verein/Kürzel…" oninput="filterSpieler()">
+        ${renderVereinDropdown(rangliste)}
       </div>
       ${renderRangliste(rangliste)}
     </div>
@@ -577,6 +578,20 @@ function renderTabelle(tabelle) {
       </table>
     </div>
   </div>`;
+}
+
+// ── Verein-Dropdown ──
+function renderVereinDropdown(rangliste) {
+  const vereine = [...new Set(
+    rangliste.map(s => s.verein).filter(v => v)
+  )].sort();
+  const options = vereine.map(v =>
+    `<option value="${esc(v.toLowerCase())}">${esc(v)}</option>`
+  ).join("");
+  return `<select class="inline-search" id="vereinSearch" onchange="filterSpieler()">
+    <option value="">Alle Mannschaften</option>
+    ${options}
+  </select>`;
 }
 
 // ── Rangliste ──
