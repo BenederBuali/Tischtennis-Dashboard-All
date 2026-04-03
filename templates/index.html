@@ -333,23 +333,37 @@ function renderSidebar(ligen) {
     return;
   }
 
-  // Nach Gruppe sortieren
+  // Feste Reihenfolge der Gruppen
+  const GRUPPEN_REIHENFOLGE = [
+    "OÖ-Liga", "Landesliga", "Landesklasse",
+    "Regionalliga", "Regionsklasse",
+    "Bezirksliga", "Bezirksklasse",
+    "1. Klasse", "2. Klasse",
+    "Cup / Sonstiges", "Sonstiges"
+  ];
+
+  // Ligen nach Gruppe zusammenfassen
   const gruppen = {};
   for (const l of ligen) {
-    const g = l.gruppe || "Sonstige";
+    const g = l.gruppe || "Sonstiges";
     if (!gruppen[g]) gruppen[g] = [];
     gruppen[g].push(l);
   }
 
+  // Gruppen in definierter Reihenfolge, Rest alphabetisch hinten
+  const bekannt   = GRUPPEN_REIHENFOLGE.filter(g => gruppen[g]);
+  const unbekannt = Object.keys(gruppen).filter(g => !GRUPPEN_REIHENFOLGE.includes(g)).sort();
+
   let html = "";
-  for (const [gruppe, items] of Object.entries(gruppen).sort()) {
-    html += `<div class="gruppe-header">${esc(gruppe)}</div>`;
+  for (const gruppe of [...bekannt, ...unbekannt]) {
+    const items = gruppen[gruppe];
+    html += `<div class="gruppe-header">${esc(gruppe)} <span style="font-weight:400;opacity:.5;">(${items.length})</span></div>`;
     for (const l of items) {
-      const badge = l.teams ? `<span class="teams-badge">${l.teams}</span>` : "";
       html += `<div class="liga-item" id="li-${l.id}"
                     onclick="ladeLiga(${l.id}, this)"
-                    data-name="${esc(l.name.toLowerCase())}">
-                 <span>${esc(l.name)}</span>${badge}
+                    data-name="${esc(l.name.toLowerCase())}"
+                    data-gruppe="${esc(gruppe.toLowerCase())}">
+                 <span>${esc(l.name)}</span>
                </div>`;
     }
   }

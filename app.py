@@ -92,15 +92,28 @@ def pruefe_liga(lid: int) -> dict | None:
 
 def extrahiere_gruppe(name: str) -> str:
     """Leitet die Gruppe/Klasse aus dem Liga-Namen ab."""
-    name_lower = name.lower()
-    for schluessel in ["landesliga", "1. klasse", "2. klasse", "3. klasse",
-                       "4. klasse", "5. klasse", "bezirksliga", "staatsliga",
-                       "regionalliga", "oberliga", "klasse a", "klasse b"]:
-        if schluessel in name_lower:
-            return schluessel.title()
-    # Erstes Wort/Phrase als Fallback
-    teile = name.split()
-    return " ".join(teile[:2]) if len(teile) >= 2 else name
+    n = name.lower()
+    if "oö-liga" in n or "oo-liga" in n:
+        return "OÖ-Liga"
+    if "landesliga" in n:
+        return "Landesliga"
+    if "landesklasse" in n:
+        return "Landesklasse"
+    if "regionalliga" in n:
+        return "Regionalliga"
+    if "regionsklasse" in n:
+        return "Regionsklasse"
+    if "bezirksliga" in n:
+        return "Bezirksliga"
+    if "bezirksklasse" in n:
+        return "Bezirksklasse"
+    if "1. klasse" in n:
+        return "1. Klasse"
+    if "2. klasse" in n:
+        return "2. Klasse"
+    if "cup" in n or "uniqa" in n:
+        return "Cup / Sonstiges"
+    return "Sonstiges"
 
 
 def entdecke_ligen() -> list:
@@ -120,14 +133,15 @@ def entdecke_ligen() -> list:
             name_roh = safe_text(a).strip()
             if not name_roh:
                 continue
-            # Führende Nummern entfernen: "100 OÖ-Liga" → "OÖ-Liga"
+            # Führende Nummern entfernen: "401 RK Linz Umg." → "RK Linz Umg."
             name = re.sub(r"^\d{3}\s+", "", name_roh).strip()
-            # Sponsoren-Zusätze kürzen
+            # "RK " → "Regionsklasse " (muss VOR dem Sponsor-Strip passieren)
+            name = re.sub(r"^RK\s+", "Regionsklasse ", name)
+            # Sponsoren-Präfixe entfernen: "DONIC/GO SPORTS OÖ-Liga" → "OÖ-Liga"
+            # Entfernt alles am Anfang das nur aus Großbuchstaben/Zahlen/Sonderzeichen besteht
+            name = re.sub(r"^(?:[A-Z]{2,}[/\s&-]*)+(?=[A-ZÖÜÄa-züöä])", "", name).strip()
+            # Sponsoren-Suffixe kürzen: "powered by Go Sports"
             name = re.sub(r"\s+(powered by|presented by|sponsored by).*$", "", name, flags=re.IGNORECASE).strip()
-            # "GO SPORTS/DONIC" etc. entfernen wenn am Anfang
-            name = re.sub(r"^[A-Z0-9 /&]+\s+", lambda mo: mo.group(0) if any(
-                kw in mo.group(0).lower() for kw in ["liga", "klasse", "bezirk", "regional"]
-            ) else "", name).strip()
             if not name:
                 name = name_roh
 
@@ -150,6 +164,8 @@ def entdecke_ligen() -> list:
                     continue
                 lid = int(m.group(1))
                 name = re.sub(r"^\d{3}\s+", "", safe_text(a).strip()).strip()
+                name = re.sub(r"^RK\s+", "Regionsklasse ", name)
+                name = re.sub(r"\s+(powered by|presented by|sponsored by).*$", "", name, flags=re.IGNORECASE).strip()
                 gruppe = extrahiere_gruppe(name)
                 if not any(l["id"] == lid for l in ligen):
                     ligen.append({"id": lid, "name": name, "gruppe": gruppe, "teams": 0})
