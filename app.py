@@ -453,22 +453,7 @@ def hintergrund_init():
         _ligen_geladen = True
     print(f"Ligen-Liste geladen: {len(ligen)} Einträge")
 
-    # Mannschaftsnamen aller Ligen im Hintergrund vorladen – bewusst gedrosselt
-    # damit der Server nicht überlastet wird und Liga-Klicks flüssig bleiben
-    print("Lade Mannschaften für alle Ligen...")
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(lade_mannschaften_schnell, l["id"]): l["id"] for l in ligen}
-        fertig = 0
-        for future in as_completed(futures):
-            lid = futures[future]
-            mannschaften = future.result()
-            fertig += 1
-            with _cache_lock:
-                for l in _ligen_liste:
-                    if l["id"] == lid:
-                        l["mannschaften"] = mannschaften
-                        break
-    print(f"Mannschaften geladen: {fertig} Ligen")
+    print("Bereit.")
 
 
 # ─── Flask-Routen ────────────────────────────────────────────────────────────────
@@ -488,6 +473,20 @@ def index():
 def api_ligen():
     with _cache_lock:
         return jsonify(_ligen_liste)
+
+
+@app.route("/api/liga/<int:liga_id>/mannschaften")
+def api_mannschaften(liga_id):
+    """Gibt nur die Mannschaftsliste zurück – schnell, kein Spiele-Fetch."""
+    # Aus Cache wenn schon geladen
+    with _cache_lock:
+        cached = _liga_cache.get(liga_id)
+    if cached and cached.get("tabelle"):
+        teams = [{"name": t["name"], "kürzel": t["kürzel"]} for t in cached["tabelle"]]
+        return jsonify(teams)
+    # Sonst schnell holen
+    teams = lade_mannschaften_schnell(liga_id)
+    return jsonify(teams)
 
 
 @app.route("/api/liga/<int:liga_id>")

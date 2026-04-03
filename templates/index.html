@@ -403,13 +403,7 @@ let laufenderChart = null;
 document.addEventListener("DOMContentLoaded", () => {
   if (alleligen.length > 0) {
     renderSidebar(alleligen);
-    const mitTeams = alleligen.filter(l => l.mannschaften && l.mannschaften.length > 0).length;
-    if (mitTeams < alleligen.length) {
-      setStatus("loading", `${mitTeams}/${alleligen.length} Ligen mit Mannschaften`);
-      setTimeout(polleLigen, 2000);
-    } else {
-      setStatus("ok", `${alleligen.length} Ligen geladen`);
-    }
+    setStatus("ok", `${alleligen.length} Ligen geladen`);
   } else {
     // Noch nicht geladen – pollen
     setStatus("loading", "Ligen werden geladen…");
@@ -424,14 +418,7 @@ function polleLigen() {
       if (ligen.length === 0) { setTimeout(polleLigen, 3000); return; }
       alleligen = ligen;
       renderSidebar(ligen);
-      const mitTeams = ligen.filter(l => l.mannschaften && l.mannschaften.length > 0).length;
-      if (mitTeams < ligen.length) {
-        // Noch nicht alle Mannschaften geladen – weiter pollen
-        setStatus("loading", `${mitTeams}/${ligen.length} Ligen mit Mannschaften`);
-        setTimeout(polleLigen, 2000);
-      } else {
-        setStatus("ok", `${ligen.length} Ligen geladen`);
-      }
+      setStatus("ok", `${ligen.length} Ligen geladen`);
     })
     .catch(() => setTimeout(polleLigen, 5000));
 }
@@ -473,38 +460,65 @@ function renderSidebar(ligen) {
     html += `<div class="gruppe-header">${esc(gruppe)} <span style="font-weight:400;opacity:.5;">(${items.length})</span></div>`;
     for (const l of items) {
       const nr = l.nummer ? `<span style="font-size:10px;color:var(--muted);font-family:monospace;">${esc(l.nummer)}</span>` : "";
-      const hat = l.mannschaften && l.mannschaften.length > 0;
-      const expandBtn = hat
-        ? `<button class="expand-btn" onclick="event.stopPropagation();toggleMannschaften(${l.id})" title="Mannschaften anzeigen">▾</button>`
-        : `<span style="width:22px;display:inline-block;"></span>`;
-      const mList = hat
-        ? `<div class="mannschaften-list" id="ml-${l.id}">
-            ${l.mannschaften.map(m => `
-              <div class="mannschaft-item" onclick="ladeLiga(${l.id}, document.getElementById('li-${l.id}'))">
-                <span class="m-kürzel">${esc(m.kürzel)}</span>
-                <span>${esc(m.name)}</span>
-              </div>`).join("")}
-           </div>`
-        : "";
       html += `<div class="liga-item" id="li-${l.id}"
                     onclick="ladeLiga(${l.id}, this)"
                     data-name="${esc(l.name.toLowerCase())}"
                     data-gruppe="${esc(gruppe.toLowerCase())}">
-                 <span style="flex:1;">${esc(l.name)}</span>${nr}${expandBtn}
-               </div>${mList}`;
+                 <span style="flex:1;">${esc(l.name)}</span>${nr}
+                 <button class="expand-btn" onclick="event.stopPropagation();toggleMannschaften(${l.id})" title="Mannschaften">▾</button>
+               </div>
+               <div class="mannschaften-list" id="ml-${l.id}"></div>`;
     }
   }
   body.innerHTML = html;
 }
 
+const _mannschaftenCache = {};
+
 function toggleMannschaften(id) {
   const list = document.getElementById("ml-" + id);
+  const btn  = document.querySelector(`#li-${id} .expand-btn`);
   if (!list) return;
   const open = list.style.display === "block";
-  list.style.display = open ? "none" : "block";
-  // Pfeil drehen
-  const btn = document.querySelector(`#li-${id} .expand-btn`);
-  if (btn) btn.textContent = open ? "▾" : "▴";
+  if (open) {
+    list.style.display = "none";
+    if (btn) btn.textContent = "▾";
+    return;
+  }
+  // Aufklappen
+  list.style.display = "block";
+  if (btn) btn.textContent = "▴";
+
+  // Schon geladen?
+  if (_mannschaftenCache[id]) {
+    renderMannschaftenList(list, _mannschaftenCache[id], id);
+    return;
+  }
+
+  // Lazy laden
+  list.innerHTML = `<div class="mannschaft-item" style="color:var(--muted);cursor:default;">
+    <span style="font-size:11px;">Lade…</span></div>`;
+  fetch(`/api/liga/${id}/mannschaften`)
+    .then(r => r.json())
+    .then(teams => {
+      _mannschaftenCache[id] = teams;
+      renderMannschaftenList(list, teams, id);
+    })
+    .catch(() => {
+      list.innerHTML = `<div class="mannschaft-item" style="color:var(--red);cursor:default;font-size:11px;">Fehler beim Laden</div>`;
+    });
+}
+
+function renderMannschaftenList(list, teams, ligaId) {
+  if (!teams.length) {
+    list.innerHTML = `<div class="mannschaft-item muted" style="cursor:default;font-size:11px;">Keine Teams</div>`;
+    return;
+  }
+  list.innerHTML = teams.map(m => `
+    <div class="mannschaft-item" onclick="ladeLiga(${ligaId}, document.getElementById('li-${ligaId}'))">
+      <span class="m-kürzel">${esc(m.kürzel)}</span>
+      <span>${esc(m.name)}</span>
+    </div>`).join("");
 }
 
 function filterLigen() {
