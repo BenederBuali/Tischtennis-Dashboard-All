@@ -524,6 +524,9 @@ function renderDashboard(d) {
 
     <!-- Tab: Spiele -->
     <div class="tab-content" id="tab-spiele">
+      <div class="search-row">
+        ${renderMannschaftDropdown(tabelle, vergangene, kuenftige)}
+      </div>
       ${renderSpiele(vergangene, kuenftige)}
     </div>
 
@@ -672,32 +675,62 @@ function filterSpieler() {
   });
 }
 
+// ── Mannschaft-Dropdown für Spiele ──
+function renderMannschaftDropdown(tabelle, vergangene, kuenftige) {
+  // Alle Kürzel aus der Tabelle
+  const options = tabelle.map(t =>
+    `<option value="${esc(t.kürzel.toLowerCase())}">${esc(t.kürzel)} – ${esc(t.name)}</option>`
+  ).join("");
+  return `<select class="inline-search" id="spieleFilter" onchange="filterSpiele()" style="max-width:320px;">
+    <option value="">Alle Mannschaften</option>
+    ${options}
+  </select>`;
+}
+
 // ── Spiele ──
 function renderSpiele(vergangene, kuenftige) {
-  function spieleSection(title, spiele, istVergangen) {
-    if (!spiele.length) return '';
-    const rows = spiele.map(s => {
-      const erg = s.ergebnis
-        ? `<span>${esc(s.ergebnis)}</span>`
-        : `<span class="ergebnis-offen">–</span>`;
-      return `<div class="spiel-row">
-        <div class="spiel-datum">${esc(s.datum)}<br><span style="font-size:10px;">${esc(s.zeit)}</span></div>
-        <div class="spiel-teams bold">${esc(s.heim)}</div>
-        <div class="spiel-teams muted">– ${esc(s.gast)}</div>
-        <div class="spiel-ergebnis">${erg}</div>
-      </div>`;
-    });
-    return `<div class="card">
-      <div class="card-title">${title} (${spiele.length})</div>
-      ${rows.join("")}
+  function spieleRow(s) {
+    const erg = s.ergebnis
+      ? `<span>${esc(s.ergebnis)}</span>`
+      : `<span class="ergebnis-offen">–</span>`;
+    const heimLow = s.heim.toLowerCase();
+    const gastLow = s.gast.toLowerCase();
+    return `<div class="spiel-row" data-heim="${esc(heimLow)}" data-gast="${esc(gastLow)}">
+      <div class="spiel-datum">${esc(s.datum)}<br><span style="font-size:10px;">${esc(s.zeit)}</span></div>
+      <div class="spiel-teams bold">${esc(s.heim)}</div>
+      <div class="spiel-teams muted">– ${esc(s.gast)}</div>
+      <div class="spiel-ergebnis">${erg}</div>
     </div>`;
   }
 
-  let html = spieleSection("Kommende Spiele", kuenftige, false);
-  // Vergangene: neueste zuerst
-  html += spieleSection("Vergangene Spiele", [...vergangene].reverse(), true);
+  function spieleSection(title, spiele, id) {
+    if (!spiele.length) return '';
+    return `<div class="card" id="${id}">
+      <div class="card-title spiele-section-title">${title} (<span class="spiele-count">${spiele.length}</span>)</div>
+      ${spiele.map(spieleRow).join("")}
+    </div>`;
+  }
+
+  let html = spieleSection("Kommende Spiele", kuenftige, "sec-kuenftige");
+  html += spieleSection("Vergangene Spiele", [...vergangene].reverse(), "sec-vergangene");
   if (!html) return '<div class="muted" style="padding:20px;">Keine Spieltermine gefunden.</div>';
   return html;
+}
+
+function filterSpiele() {
+  const q = document.getElementById("spieleFilter")?.value.toLowerCase().trim() || "";
+  document.querySelectorAll("#tab-spiele .card").forEach(card => {
+    let sichtbar = 0;
+    card.querySelectorAll(".spiel-row").forEach(row => {
+      const match = !q || row.dataset.heim.includes(q) || row.dataset.gast.includes(q);
+      row.style.display = match ? "" : "none";
+      if (match) sichtbar++;
+    });
+    // Anzahl im Titel aktualisieren
+    const count = card.querySelector(".spiele-count");
+    if (count) count.textContent = sichtbar;
+    card.style.display = sichtbar === 0 ? "none" : "";
+  });
 }
 
 // ── Charts ──
