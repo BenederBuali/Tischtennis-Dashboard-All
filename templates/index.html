@@ -633,55 +633,21 @@ function renderDashboard(d) {
 // ── Tabelle ──
 function renderTabelle(tabelle, rangliste) {
   if (!tabelle.length) return '<div class="muted" style="padding:20px;">Keine Daten verfügbar.</div>';
-
-  // Spieler pro Verein vorgruppieren (Kürzel → Spielerliste)
-  const spielerProVerein = {};
-  for (const s of rangliste) {
-    const k = (s.verein || "").toUpperCase();
-    if (!spielerProVerein[k]) spielerProVerein[k] = [];
-    spielerProVerein[k].push(s);
-  }
-
   const rows = tabelle.map(t => {
     const rangBadge = t.rang <= 3
       ? `<span class="rang-badge rang-${t.rang}">${t.rang}</span>`
       : `<span style="color:var(--muted);padding:0 5px;">${t.rang}</span>`;
-
-    // Spieler dieser Mannschaft
-    const sp = spielerProVerein[t.kürzel.toUpperCase()] || [];
-    const spHtml = sp.length
-      ? sp.map(s => {
-          const sn = s.siege + s.niederl;
-          const snTxt = sn > 0 ? `<span style="color:var(--muted);font-size:10px;">${s.siege}:${s.niederl}</span>` : "";
-          const rcTxt = s.rc ? `<span style="color:var(--accent);font-size:10px;">${s.rc}</span>` : "";
-          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid #1e2133;">
-            <span style="font-size:12px;">${esc(s.name)}</span>
-            <span style="display:flex;gap:8px;align-items:center;">${snTxt}${rcTxt}</span>
-          </div>`;
-        }).join("")
-      : `<div style="font-size:12px;color:var(--muted);padding:4px 0;">Keine Spieler gefunden</div>`;
-
-    const uid = `kader-${t.kürzel.replace(/\W/g, "")}`;
-    return `<tr onclick="toggleKader('${uid}')" style="cursor:pointer;">
+    return `<tr>
       <td class="center">${rangBadge}</td>
-      <td class="bold">${esc(t.name)} <span style="font-size:11px;color:var(--muted);">(${sp.length})</span></td>
+      <td class="bold">${esc(t.name)}</td>
       <td class="muted" style="font-size:12px;">${esc(t.kürzel)}</td>
       <td class="center">${t.sp}</td>
       <td class="center green">${t.s}</td>
       <td class="center muted">${t.u}</td>
       <td class="center red">${t.n}</td>
       <td class="center bold">${t.p}</td>
-      <td style="width:20px;text-align:center;color:var(--muted);font-size:11px;" class="kader-arrow" id="arr-${uid}">▾</td>
-    </tr>
-    <tr id="${uid}" style="display:none;">
-      <td colspan="9" style="padding:0;">
-        <div style="padding:8px 14px 10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);">
-          ${spHtml}
-        </div>
-      </td>
     </tr>`;
   }).join("");
-
   return `<div class="card">
     <div class="table-wrap">
       <table>
@@ -694,21 +660,11 @@ function renderTabelle(tabelle, rangliste) {
           <th class="center">U</th>
           <th class="center">N</th>
           <th class="center">Pkt</th>
-          <th></th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
   </div>`;
-}
-
-function toggleKader(uid) {
-  const row  = document.getElementById(uid);
-  const arr  = document.getElementById("arr-" + uid);
-  if (!row) return;
-  const open = row.style.display !== "none";
-  row.style.display = open ? "none" : "";
-  if (arr) arr.textContent = open ? "▾" : "▴";
 }
 
 // ── Verein-Dropdown ──
