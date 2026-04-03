@@ -42,7 +42,7 @@ _ligen_geladen = False
 # ─── Scraping-Hilfsfunktionen ────────────────────────────────────────────────────
 
 def fetch(url: str, params: dict = None) -> BeautifulSoup:
-    r = requests.get(url, params=params, headers=HEADERS, timeout=15)
+    r = requests.get(url, params=params, headers=HEADERS, timeout=8)
     r.encoding = ENCODING
     return BeautifulSoup(r.text, "html.parser")
 
@@ -181,52 +181,44 @@ def entdecke_ligen() -> list:
     return ligen
 
 
-# ─── Ligatabelle scrapen ─────────────────────────────────────────────────────────
+# ─── Tabelle + Rangliste in einem einzigen Fetch ────────────────────────────────
 
-def lade_ligatabelle(liga_id: int) -> list:
+def lade_tabelle_und_rangliste(liga_id: int) -> tuple:
+    """
+    Parsed Ligatabelle UND Einzelrangliste aus einem einzigen HTTP-Request.
+    Das spart einen kompletten Roundtrip pro Liga-Aufruf.
+    """
     soup = fetch(BASE_URL, {"lid": liga_id})
-    tabelle = []
-    for row in soup.find_all("tr"):
-        zellen = row.find_all("td")
-        if len(zellen) < 15:
-            continue
-        rang_cell = zellen[1]
-        if not rang_cell.get("data-msrangsort"):
-            continue
-        rang_text = safe_text(rang_cell).strip().rstrip(".")
-        if not rang_text.isdigit():
-            continue
-        rang = int(rang_text)
-        name   = safe_text(zellen[2]).strip()
-        kürzel = safe_text(zellen[3]).strip()
-        if not kürzel:
-            continue
-
-        def to_int(zelle):
-            t = safe_text(zelle).strip()
-            return int(t) if t.isdigit() else 0
-
-        tabelle.append({
-            "rang":   rang,
-            "name":   name,
-            "kürzel": kürzel,
-            "sp":     to_int(zellen[4]),
-            "s":      to_int(zellen[5]),
-            "u":      to_int(zellen[6]),
-            "n":      to_int(zellen[7]),
-            "p":      to_int(zellen[14]),
-        })
-    return sorted(tabelle, key=lambda x: x["rang"])
-
-
-# ─── Einzelrangliste scrapen ─────────────────────────────────────────────────────
-
-def lade_einzelrangliste(liga_id: int) -> list:
-    soup = fetch(BASE_URL, {"lid": liga_id})
-    spieler = []
+    tabelle   = []
+    rangliste = []
     rang_fake = 9000
 
+    def to_int(zelle):
+        t = safe_text(zelle).strip()
+        return int(t) if t.isdigit() else 0
+
     for row in soup.find_all("tr"):
+        zellen = row.find_all("td")
+
+        # ── Tabellenzeile erkennen (≥15 Zellen, td[1] hat data-msrangsort) ──
+        if len(zellen) >= 15 and zellen[1].get("data-msrangsort"):
+            rang_text = safe_text(zellen[1]).strip().rstrip(".")
+            if rang_text.isdigit():
+                kürzel = safe_text(zellen[3]).strip()
+                if kürzel:
+                    tabelle.append({
+                        "rang":   int(rang_text),
+                        "name":   safe_text(zellen[2]).strip(),
+                        "kürzel": kürzel,
+                        "sp":     to_int(zellen[4]),
+                        "s":      to_int(zellen[5]),
+                        "u":      to_int(zellen[6]),
+                        "n":      to_int(zellen[7]),
+                        "p":      to_int(zellen[14]),
+                    })
+            continue
+
+        # ── Ranglisten-Zeile erkennen (hat Spieler-Link) ──
         spieler_link = row.find("a", href=lambda h: h and "spid=" in h and "uebersicht=" in h)
         if not spieler_link:
             continue
@@ -234,8 +226,7 @@ def lade_einzelrangliste(liga_id: int) -> list:
         if not name or len(name) < 3:
             continue
 
-        zellen = row.find_all("td")
-        texts  = [safe_text(z) for z in zellen]
+        texts = [safe_text(z) for z in zellen]
         if not texts:
             continue
 
@@ -278,7 +269,7 @@ def lade_einzelrangliste(liga_id: int) -> list:
                     rc = t2
                     break
 
-        spieler.append({
+        rangliste.append({
             "rang":           rang,
             "name":           name,
             "verein":         verein,
@@ -290,7 +281,7 @@ def lade_einzelrangliste(liga_id: int) -> list:
             "win_pct":        round(s / (s + n) * 100, 1) if (s + n) > 0 else 0.0,
         })
 
-    return spieler
+    return sorted(tabelle, key=lambda x: x["rang"]), rangliste
 
 
 # ─── Spiele scrapen ──────────────────────────────────────────────────────────────
@@ -324,18 +315,30 @@ def _parse_spiele_seite(soup, alle: list):
 
 
 def lade_spiele(liga_id: int) -> tuple:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     alle  = []
     jetzt = datetime.now()
     params_base = {"do": "spiele", "lid": liga_id, "zeit": "alle"}
-    soup = fetch(BASE_URL, params_base)
-    _parse_spiele_seite(soup, alle)
-    seiten_text = soup.get_text()
-    pm = re.search(r"Seite\s+\d+\s+von\s+(\d+)", seiten_text)
-    if pm:
-        gesamt = int(pm.group(1))
-        for seite in range(2, gesamt + 1):
-            soup2 = fetch(BASE_URL, {**params_base, "seite": seite})
-            _parse_spiele_seite(soup2, alle)
+
+    # Seite 1 laden und Gesamtanzahl ermitteln
+    soup1 = fetch(BASE_URL, params_base)
+    _parse_spiele_seite(soup1, alle)
+    pm = re.search(r"Seite\s+\d+\s+von\s+(\d+)", soup1.get_text())
+    gesamt = int(pm.group(1)) if pm else 1
+
+    # Alle weiteren Seiten parallel laden (max 15 gleichzeitig)
+    if gesamt > 1:
+        def fetch_seite(nr):
+            s = fetch(BASE_URL, {**params_base, "seite": nr})
+            teil = []
+            _parse_spiele_seite(s, teil)
+            return teil
+
+        with ThreadPoolExecutor(max_workers=15) as ex:
+            futures = {ex.submit(fetch_seite, nr): nr for nr in range(2, gesamt + 1)}
+            for fut in as_completed(futures):
+                alle.extend(fut.result())
+
     seen, unique = set(), []
     for s in alle:
         key = (s["datum"], s["heim"], s["gast"])
@@ -365,11 +368,16 @@ def lade_liga_daten(liga_id: int, force: bool = False) -> dict:
 
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Lade Liga {liga_id}...")
     try:
-        tabelle              = lade_ligatabelle(liga_id)
-        rangliste            = lade_einzelrangliste(liga_id)
-        vergangene, kuenftige = lade_spiele(liga_id)
+        from concurrent.futures import ThreadPoolExecutor
 
-        # Liga-Name aus Tabelle oder Titel ermitteln
+        # Tabelle+Rangliste und Spiele parallel laden (2 statt 3 sequenzielle Requests)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_haupt  = ex.submit(lade_tabelle_und_rangliste, liga_id)
+            fut_spiele = ex.submit(lade_spiele, liga_id)
+            tabelle, rangliste    = fut_haupt.result()
+            vergangene, kuenftige = fut_spiele.result()
+
+        # Liga-Name aus bekannter Liste
         liga_name = ""
         with _cache_lock:
             for l in _ligen_liste:
@@ -377,14 +385,7 @@ def lade_liga_daten(liga_id: int, force: bool = False) -> dict:
                     liga_name = l["name"]
                     break
         if not liga_name:
-            try:
-                soup = fetch(BASE_URL, {"lid": liga_id})
-                titel = soup.find("title")
-                liga_name = safe_text(titel).strip() if titel else f"Liga {liga_id}"
-                liga_name = re.sub(r"^\s*OÖTTV\s*[-–|]\s*", "", liga_name).strip()
-                liga_name = re.sub(r"\s*[-–|]\s*XTTV.*$", "", liga_name).strip()
-            except Exception:
-                liga_name = f"Liga {liga_id}"
+            liga_name = f"Liga {liga_id}"
 
         daten = {
             "liga_id":   liga_id,
