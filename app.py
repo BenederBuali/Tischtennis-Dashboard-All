@@ -133,12 +133,13 @@ def entdecke_ligen() -> list:
             name_roh = safe_text(a).strip()
             if not name_roh:
                 continue
-            # Führende Nummern entfernen: "401 RK Linz Umg." → "RK Linz Umg."
+            # Führende Klassennummer extrahieren und separat speichern: "631 Bezirksklasse Steyr..." → nr=631
+            nr_match = re.match(r"^(\d{3})\s+", name_roh)
+            nummer = nr_match.group(1) if nr_match else ""
             name = re.sub(r"^\d{3}\s+", "", name_roh).strip()
             # "RK " → "Regionsklasse " (muss VOR dem Sponsor-Strip passieren)
             name = re.sub(r"^RK\s+", "Regionsklasse ", name)
             # Sponsoren-Präfixe entfernen: "DONIC/GO SPORTS OÖ-Liga" → "OÖ-Liga"
-            # Entfernt alles am Anfang das nur aus Großbuchstaben/Zahlen/Sonderzeichen besteht
             name = re.sub(r"^(?:[A-Z]{2,}[/\s&-]*)+(?=[A-ZÖÜÄa-züöä])", "", name).strip()
             # Sponsoren-Suffixe kürzen: "powered by Go Sports"
             name = re.sub(r"\s+(powered by|presented by|sponsored by).*$", "", name, flags=re.IGNORECASE).strip()
@@ -147,7 +148,7 @@ def entdecke_ligen() -> list:
 
             gruppe = extrahiere_gruppe(name)
             if not any(l["id"] == lid for l in ligen):
-                ligen.append({"id": lid, "name": name, "gruppe": gruppe, "teams": 0})
+                ligen.append({"id": lid, "name": name, "nummer": nummer, "gruppe": gruppe, "teams": 0})
 
         print(f"  {len(ligen)} Ligen gefunden.")
     except Exception as e:
@@ -163,12 +164,15 @@ def entdecke_ligen() -> list:
                 if not m:
                     continue
                 lid = int(m.group(1))
-                name = re.sub(r"^\d{3}\s+", "", safe_text(a).strip()).strip()
+                name_roh2 = safe_text(a).strip()
+                nr_match2 = re.match(r"^(\d{3})\s+", name_roh2)
+                nummer2 = nr_match2.group(1) if nr_match2 else ""
+                name = re.sub(r"^\d{3}\s+", "", name_roh2).strip()
                 name = re.sub(r"^RK\s+", "Regionsklasse ", name)
                 name = re.sub(r"\s+(powered by|presented by|sponsored by).*$", "", name, flags=re.IGNORECASE).strip()
                 gruppe = extrahiere_gruppe(name)
                 if not any(l["id"] == lid for l in ligen):
-                    ligen.append({"id": lid, "name": name, "gruppe": gruppe, "teams": 0})
+                    ligen.append({"id": lid, "name": name, "nummer": nummer2, "gruppe": gruppe, "teams": 0})
             print(f"  Fallback: {len(ligen)} Ligen gefunden.")
         except Exception as e2:
             print(f"  Fallback-Fehler: {e2}")

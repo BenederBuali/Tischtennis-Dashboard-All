@@ -359,11 +359,12 @@ function renderSidebar(ligen) {
     const items = gruppen[gruppe];
     html += `<div class="gruppe-header">${esc(gruppe)} <span style="font-weight:400;opacity:.5;">(${items.length})</span></div>`;
     for (const l of items) {
+      const nr = l.nummer ? `<span style="font-size:10px;color:var(--muted);margin-right:5px;font-family:monospace;">${esc(l.nummer)}</span>` : "";
       html += `<div class="liga-item" id="li-${l.id}"
                     onclick="ladeLiga(${l.id}, this)"
                     data-name="${esc(l.name.toLowerCase())}"
                     data-gruppe="${esc(gruppe.toLowerCase())}">
-                 <span>${esc(l.name)}</span>
+                 ${nr}<span>${esc(l.name)}</span>
                </div>`;
     }
   }
