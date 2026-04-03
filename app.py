@@ -334,7 +334,7 @@ def lade_spiele(liga_id: int) -> tuple:
             _parse_spiele_seite(s, teil)
             return teil
 
-        with ThreadPoolExecutor(max_workers=15) as ex:
+        with ThreadPoolExecutor(max_workers=8) as ex:
             futures = {ex.submit(fetch_seite, nr): nr for nr in range(2, gesamt + 1)}
             for fut in as_completed(futures):
                 alle.extend(fut.result())
@@ -453,9 +453,10 @@ def hintergrund_init():
         _ligen_geladen = True
     print(f"Ligen-Liste geladen: {len(ligen)} Einträge")
 
-    # Mannschaftsnamen aller Ligen parallel im Hintergrund vorladen
+    # Mannschaftsnamen aller Ligen im Hintergrund vorladen – bewusst gedrosselt
+    # damit der Server nicht überlastet wird und Liga-Klicks flüssig bleiben
     print("Lade Mannschaften für alle Ligen...")
-    with ThreadPoolExecutor(max_workers=15) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {executor.submit(lade_mannschaften_schnell, l["id"]): l["id"] for l in ligen}
         fertig = 0
         for future in as_completed(futures):
