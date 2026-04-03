@@ -690,6 +690,15 @@ function renderMannschaftDropdown(tabelle, vergangene, kuenftige) {
 // ── Spiele ──
 function renderSpiele(vergangene, kuenftige) {
   function spieleRow(s) {
+    // Gewinner bestimmen aus Ergebnis "6:4"
+    let heimGewonnen = false, gastGewonnen = false;
+    if (s.ergebnis) {
+      const [h, g] = s.ergebnis.split(":").map(Number);
+      if (!isNaN(h) && !isNaN(g)) {
+        heimGewonnen = h > g;
+        gastGewonnen = g > h;
+      }
+    }
     const erg = s.ergebnis
       ? `<span>${esc(s.ergebnis)}</span>`
       : `<span class="ergebnis-offen">–</span>`;
@@ -697,8 +706,8 @@ function renderSpiele(vergangene, kuenftige) {
     const gastLow = s.gast.toLowerCase();
     return `<div class="spiel-row" data-heim="${esc(heimLow)}" data-gast="${esc(gastLow)}">
       <div class="spiel-datum">${esc(s.datum)}<br><span style="font-size:10px;">${esc(s.zeit)}</span></div>
-      <div class="spiel-teams bold">${esc(s.heim)}</div>
-      <div class="spiel-teams muted">– ${esc(s.gast)}</div>
+      <div class="spiel-teams ${heimGewonnen ? 'bold' : 'muted'}">${esc(s.heim)}</div>
+      <div class="spiel-teams ${gastGewonnen ? 'bold' : 'muted'}">– ${esc(s.gast)}</div>
       <div class="spiel-ergebnis">${erg}</div>
     </div>`;
   }
